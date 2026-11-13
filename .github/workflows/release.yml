@@ -1,0 +1,145 @@
+name: Build & Publish Desktop Releases (Linux & Windows)
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check-release:
+    name: Determine Release Version
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.check.outputs.version }}
+      version_num: ${{ steps.check.outputs.version_num }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check version and existing releases
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER_NUM=$(node -p "require('./package.json').version")
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+            VER_NUM="${VERSION#v}"
+          else
+            VERSION="v${VER_NUM}"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "version_num=${VER_NUM}" >> "$GITHUB_OUTPUT"
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          elif ! gh release view "${VERSION}" >/dev/null 2>&1; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Release ${VERSION} already exists. Skipping."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-linux:
+    name: Build Linux Desktop App (.deb & .AppImage)
+    needs: check-release
+    if: needs.check-release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Next.js standalone bundle
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/app_db
+        run: npm run build
+
+      - name: Package Electron Linux (.deb & .AppImage)
+        run: npx electron-builder --linux deb AppImage --publish never
+
+      - name: Upload Linux desktop artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-desktop
+          path: |
+            dist-electron/*.deb
+            dist-electron/*.AppImage
+
+  build-windows:
+    name: Build Windows Desktop App (.exe Installer & Portable)
+    needs: check-release
+    if: needs.check-release.outputs.should_release == 'true'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Next.js standalone bundle
+        shell: pwsh
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/app_db
+        run: npm run build
+
+      - name: Package Electron Windows (.exe)
+        shell: pwsh
+        run: npx electron-builder --win nsis portable --publish never
+
+      - name: Upload Windows desktop artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-desktop
+          path: dist-electron/*.exe
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [check-release, build-linux, build-windows]
+    if: needs.check-release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.check-release.outputs.version }}
+          name: "Raimand AI Assistant ${{ needs.check-release.outputs.version }} — Desktop Apps (Linux & Windows)"
+          generate_release_notes: true
+          body: |
+            ## Raimand AI Assistant ${{ needs.check-release.outputs.version }} (Desktop App)
+
+            Installable native desktop applications powered by **Electron** (runs in its own dedicated window — no browser required, no separate Node.js installation needed):
+
+            - **Windows Installer (`.exe`)**: `Raimand AI Assistant Setup ${{ needs.check-release.outputs.version_num }}.exe`
+            - **Windows Portable (`.exe`)**: `Raimand AI Assistant ${{ needs.check-release.outputs.version_num }}.exe`
+            - **Linux Debian / Ubuntu (`.deb`)**: `raimand-ai-assistant_${{ needs.check-release.outputs.version_num }}_amd64.deb`
+            - **Linux Portable (`.AppImage`)**: `Raimand AI Assistant-${{ needs.check-release.outputs.version_num }}.AppImage`
+
+            > **Prerequisite**: Ensure **PostgreSQL `>= 14`** is running locally (database `app_db` with schema pushed via `npx drizzle-kit push`).
+          files: |
+            artifacts/linux-desktop/*
+            artifacts/windows-desktop/*
