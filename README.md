@@ -2,9 +2,10 @@
 
 # Raimand (رایمند) — Autonomous Persian RTL AI Assistant
 
-**A local-first, full-stack AI Assistant & Autonomous Agent workspace built with Next.js 16, PostgreSQL, MCP, Playwright, and native document authoring.**
+**A local-first, full-stack Desktop & Web AI Assistant and Autonomous Agent workspace built with Electron, Next.js 16, PostgreSQL, MCP, Playwright, and native document authoring.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Electron](https://img.shields.io/badge/Electron-33-47848F?logo=electron)](https://www.electronjs.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-16.2-black?logo=next.js)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript)](https://www.typescriptlang.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14%2B-4169E1?logo=postgresql)](https://www.postgresql.org/)
@@ -18,10 +19,11 @@
 
 ## Overview
 
-**Raimand (رایمند)** is an open-source, self-hosted AI assistant and autonomous agent platform designed from the ground up with first-class **Persian (RTL)** typography (`Vazirmatn`) and **local-first privacy**. Built on Next.js App Router, React 19, Drizzle ORM, and PostgreSQL, Raimand connects to any **OpenAI-compatible API provider** (OpenAI, OpenRouter, Groq, or local LLMs such as Ollama/LM Studio) while keeping your API keys, conversations, long-term memories, and workspace files on your own machine.
+**Raimand (رایمند)** is an open-source, local-first AI assistant and autonomous agent **desktop application** (and self-hosted web app) designed from the ground up with first-class **Persian (RTL)** typography (`Vazirmatn`) and **local-first privacy**. Built on Electron, Next.js App Router, React 19, Drizzle ORM, and PostgreSQL, Raimand runs in its own dedicated native window on **Windows** and **Linux**, connecting to any **OpenAI-compatible API provider** (OpenAI, OpenRouter, Groq, or local LLMs such as Ollama/LM Studio) while keeping your API keys, conversations, long-term memories, and workspace files on your own machine.
 
 ## Key Features
 
+- **Native Desktop App (Windows & Linux)**: Built with Electron (`electron/main.cjs`) — installs like a standard desktop program, launches in its own dedicated window (no browser tab required), and bundles Node.js inside.
 - **Autonomous Agent Mode**: Multi-step tool execution loop (`src/lib/agent.ts`) with streaming responses, stop controls, and interactive approval policies (`allow` / `ask` / `deny`).
 - **Sandboxed Workspace File System**: Read, write, search, upload, preview, and organize files strictly within your configured `workspaceRoot` and explicitly attached folders (`src/lib/paths.ts`).
 - **Native Document Generation & Parsing**: Create and edit real **PDF** (`pdfkit`, `pdf-lib`, `pdf-parse`), **Word `.docx`** (`docx`, `mammoth`), and **PowerPoint `.pptx`** (`pptxgenjs`) files directly from agent workflows.
@@ -29,21 +31,21 @@
 - **Model Context Protocol (MCP)**: Native MCP client (`@modelcontextprotocol/sdk`) to connect external tool servers and manage tools dynamically from the UI.
 - **Generative UI & HTML Previews**: Interactive rendered UI frames (`UIFrame`) powered by local `Chart.js` and sandboxed HTML previews.
 - **Long-Term Memory, Projects & Cron Scheduler**: Persistent memories, project-scoped workspaces, and a built-in Node.js background task scheduler (`cron-parser`) supporting recurring cron jobs and one-off tasks.
-- **Cross-Platform Releases**: Automated GitHub Actions builds for **Linux (`.deb` & `.tar.gz`)** and **Windows (`.zip`)**.
 
 ---
 
-## Download Pre-Built Releases (Linux & Windows)
+## Download Desktop App (Windows & Linux)
 
-Pre-built standalone packages are published on the [GitHub Releases](https://github.com/w15800974-debug/raimand-ai-assistant/releases) page:
+Installable native desktop packages are built for **Windows** and **Linux** on the [GitHub Releases](https://github.com/w15800974-debug/raimand-ai-assistant/releases) page:
 
-| Platform | Package Format | Quick Run |
+| Platform | Package Format | Install & Launch |
 |---|---|---|
-| **Linux (Ubuntu / Debian)** | `raimand-ai-assistant_<version>_amd64.deb` | `sudo dpkg -i raimand-ai-assistant_*.deb && raimand` |
-| **Linux (Portable)** | `raimand-ai-assistant-v<version>-linux-x64.tar.gz` | Extract and run `./start-raimand.sh` |
-| **Windows (x64)** | `raimand-ai-assistant-v<version>-windows-x64.zip` | Extract and double-click `start-raimand.bat` |
+| **Windows (Installer)** | `Raimand AI Assistant Setup <version>.exe` | Double-click to install (creates Start Menu & Desktop shortcuts) |
+| **Windows (Portable)** | `Raimand AI Assistant <version>.exe` | Run directly without installation |
+| **Linux (Ubuntu / Debian)** | `raimand-ai-assistant_<version>_amd64.deb` | `sudo dpkg -i raimand-ai-assistant_*.deb` then launch from app menu |
+| **Linux (Portable)** | `Raimand AI Assistant-<version>.AppImage` | `chmod +x *.AppImage && ./Raimand*.AppImage` |
 
-> **Runtime Prerequisites**: Both source builds and standalone releases require **Node.js `>= 20.9`** and **PostgreSQL `>= 14`**. Before first launch, create a PostgreSQL database (e.g. `app_db`), configure `DATABASE_URL` in `.env`, and push the Drizzle schema (`npx drizzle-kit push`).
+> **Database Prerequisite**: The desktop app bundles Node.js and Chromium automatically, and requires **PostgreSQL `>= 14`** running locally (`app_db` database with schema pushed via `npx drizzle-kit push`). On first launch, the desktop app creates a `.env` file in your OS user-data directory if one does not exist.
 
 ---
 
@@ -83,21 +85,27 @@ DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/app_db
 # DISPLAY=:0 # Optional on Linux for headed Playwright mode
 ```
 
-> **Note**: `drizzle.config.json` also contains `dbCredentials.url`. If you use a custom `DATABASE_URL`, update `drizzle.config.json` to match before running `drizzle-kit push`.
-
 Push the database schema from `src/db/schema.ts`:
 
 ```bash
 npx drizzle-kit push
 ```
 
-### 4. Run the Application
+### 4. Run as Web App or Desktop App
 
 ```bash
+# Development web server (http://localhost:3000)
 npm run dev
+
+# Or build and launch the Electron Desktop App
+npm run build
+npm run electron:start
+
+# Or build native installers (.deb / .AppImage / .exe)
+npm run electron:build
 ```
 
-Open [http://localhost:3000](http://localhost:3000). On first launch, the `/onboarding` wizard guides you through setting your display name, selecting a sandboxed workspace folder, and configuring your AI provider (Base URL, API key, and model). API keys are stored in your local PostgreSQL database, not in `.env`.
+On first launch, the `/onboarding` wizard guides you through setting your display name, selecting a sandboxed workspace folder, and configuring your AI provider (Base URL, API key, and model).
 
 ---
 
@@ -106,8 +114,10 @@ Open [http://localhost:3000](http://localhost:3000). On first launch, the `/onbo
 | Command | Description |
 |---|---|
 | `npm run dev` | Start development server on port `3000` |
-| `npm run build` | Build production bundle (requires valid `DATABASE_URL` env var) |
-| `npm run start` | Start built production server |
+| `npm run build` | Build production standalone bundle (requires `DATABASE_URL` env var) |
+| `npm run start` | Start built production web server |
+| `npm run electron:start` | Launch the Electron desktop window (after `npm run build`) |
+| `npm run electron:build` | Build native desktop installers via `electron-builder` |
 | `npm run lint` | Run ESLint across the codebase |
 | `npm run typecheck` | Run TypeScript type checking (`tsc --noEmit`) |
 | `npx drizzle-kit push` | Push `src/db/schema.ts` to PostgreSQL |
@@ -118,7 +128,9 @@ Open [http://localhost:3000](http://localhost:3000). On first launch, the `/onbo
 
 ```text
 .
-├── docs/workflows/          # Ready-to-use CI & cross-platform Linux/Windows Release workflows
+├── electron/
+│   └── main.cjs             # Electron desktop shell & embedded Next.js server launcher
+├── docs/workflows/          # Ready-to-use CI & Desktop Release (Windows/Linux) workflows
 ├── src/
 │   ├── app/
 │   │   ├── (app)/           # Main authenticated shell: chat, projects, files, connections, schedules, memory, settings
@@ -141,22 +153,6 @@ Open [http://localhost:3000](http://localhost:3000). On first launch, the `/onbo
 ├── next.config.ts
 └── package.json
 ```
-
-### API Endpoints
-
-| Route | Purpose |
-|---|---|
-| `/api/health` | Database health check (`select 1`) |
-| `/api/chat`, `/api/chat/stop` | Streaming chat & agent execution / cancellation |
-| `/api/conversations`, `/api/conversations/[id]` | Conversation CRUD |
-| `/api/projects` | Project management |
-| `/api/providers`, `/api/providers/[id]/models` | Model provider configuration & model discovery |
-| `/api/files`, `/api/files/upload`, `/api/files/preview`, `/api/files/raw` | Workspace file browser, upload, preview & download |
-| `/api/fs/browse` | Local directory picker |
-| `/api/mcp`, `/api/mcp/[id]` | MCP server connections & tool discovery |
-| `/api/memories` | Long-term memory management |
-| `/api/schedules`, `/api/schedules/run` | Scheduled tasks & manual trigger |
-| `/api/settings`, `/api/tools`, `/api/browser/install` | Settings, tool permissions & Chromium installer |
 
 ---
 
