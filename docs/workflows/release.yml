@@ -1,0 +1,237 @@
+name: Build & Publish Releases (Linux & Windows)
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check-release:
+    name: Determine Release Version
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.check.outputs.version }}
+      version_num: ${{ steps.check.outputs.version_num }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check version and existing releases
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER_NUM=$(node -p "require('./package.json').version")
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+            VER_NUM="${VERSION#v}"
+          else
+            VERSION="v${VER_NUM}"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "version_num=${VER_NUM}" >> "$GITHUB_OUTPUT"
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          elif ! gh release view "${VERSION}" >/dev/null 2>&1; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Release ${VERSION} already exists. Skipping."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-linux:
+    name: Build Linux (tar.gz & .deb)
+    needs: check-release
+    if: needs.check-release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Next.js standalone bundle
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/app_db
+        run: npm run build
+
+      - name: Package Linux tar.gz and .deb
+        env:
+          VERSION: ${{ needs.check-release.outputs.version }}
+          VER_NUM: ${{ needs.check-release.outputs.version_num }}
+        run: |
+          PKG_DIR="dist-linux/raimand-ai-assistant"
+          mkdir -p "${PKG_DIR}/.next" "${PKG_DIR}/src/db" out
+
+          cp -r .next/standalone/. "${PKG_DIR}/"
+          cp -r .next/static "${PKG_DIR}/.next/static"
+          cp -r public "${PKG_DIR}/public"
+          cp drizzle.config.json "${PKG_DIR}/"
+          cp src/db/schema.ts "${PKG_DIR}/src/db/"
+          cp .env.example README.md README.fa.md LICENSE "${PKG_DIR}/"
+
+          cat << 'EOF' > "${PKG_DIR}/start-raimand.sh"
+          #!/usr/bin/env bash
+          set -e
+          SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+          cd "$SCRIPT_DIR"
+
+          if [ ! -f ".env" ]; then
+            echo "[Raimand] Creating .env from .env.example..."
+            cp .env.example .env
+            echo "[Raimand] Please ensure PostgreSQL is running and DATABASE_URL in .env is valid."
+          fi
+
+          set -a
+          source .env
+          set +a
+
+          export PORT="${PORT:-3000}"
+          export HOSTNAME="${HOSTNAME:-0.0.0.0}"
+          echo "[Raimand] Starting Raimand AI Assistant on http://localhost:${PORT} ..."
+          exec node server.js
+          EOF
+          chmod +x "${PKG_DIR}/start-raimand.sh"
+
+          tar -czf "out/raimand-ai-assistant-${VERSION}-linux-x64.tar.gz" -C dist-linux raimand-ai-assistant
+
+          DEB_DIR="deb-pkg"
+          mkdir -p "${DEB_DIR}/DEBIAN" "${DEB_DIR}/opt/raimand-ai-assistant" "${DEB_DIR}/usr/local/bin"
+          cp -r "${PKG_DIR}/." "${DEB_DIR}/opt/raimand-ai-assistant/"
+
+          cat << 'EOF' > "${DEB_DIR}/usr/local/bin/raimand"
+          #!/usr/bin/env bash
+          exec /opt/raimand-ai-assistant/start-raimand.sh "$@"
+          EOF
+          chmod +x "${DEB_DIR}/usr/local/bin/raimand"
+
+          cat << EOF > "${DEB_DIR}/DEBIAN/control"
+          Package: raimand-ai-assistant
+          Version: ${VER_NUM}
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Maintainer: Ali Hajian <w15800974@gmail.com>
+          Depends: nodejs (>= 20.9.0)
+          Description: Raimand (رایمند) - Persian RTL AI Assistant & Autonomous Agent
+           Full-featured Persian RTL AI assistant and autonomous agent workspace built
+           with Next.js, PostgreSQL, MCP support, Playwright, and PDF/DOCX/PPTX tools.
+          EOF
+
+          dpkg-deb --build "${DEB_DIR}" "out/raimand-ai-assistant_${VER_NUM}_amd64.deb"
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-release
+          path: out/*
+
+  build-windows:
+    name: Build Windows (.zip)
+    needs: check-release
+    if: needs.check-release.outputs.should_release == 'true'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Next.js standalone bundle
+        shell: pwsh
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/app_db
+        run: npm run build
+
+      - name: Package Windows ZIP
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.check-release.outputs.version }}
+        run: |
+          $pkgDir = "dist-windows\raimand-ai-assistant"
+          New-Item -ItemType Directory -Force -Path "$pkgDir\.next", "$pkgDir\src\db", "out" | Out-Null
+
+          Copy-Item -Recurse -Force ".next\standalone\*" "$pkgDir\"
+          Copy-Item -Recurse -Force ".next\static" "$pkgDir\.next\static"
+          Copy-Item -Recurse -Force "public" "$pkgDir\public"
+          Copy-Item -Force "drizzle.config.json" "$pkgDir\"
+          Copy-Item -Force "src\db\schema.ts" "$pkgDir\src\db\"
+          Copy-Item -Force ".env.example", "README.md", "README.fa.md", "LICENSE" "$pkgDir\"
+
+          @'
+          @echo off
+          setlocal enabledelayedexpansion
+          cd /d "%~dp0"
+          if not exist ".env" (
+            echo [Raimand] Creating .env from .env.example...
+            copy ".env.example" ".env" >nul
+            echo [Raimand] Please ensure PostgreSQL is running and DATABASE_URL in .env is valid.
+          )
+          for /f "usebackq tokens=1,* delims==" %%A in (".env") do (
+            set "line=%%A"
+            if not "!line:~0,1!"=="#" if not "%%A"=="" set "%%A=%%B"
+          )
+          if "%PORT%"=="" set "PORT=3000"
+          echo [Raimand] Starting Raimand AI Assistant on http://localhost:%PORT% ...
+          start "" "http://localhost:%PORT%"
+          node server.js
+          pause
+          '@ | Set-Content -Path "$pkgDir\start-raimand.bat" -Encoding UTF8
+
+          Compress-Archive -Path "$pkgDir" -DestinationPath "out\raimand-ai-assistant-$env:VERSION-windows-x64.zip" -Force
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: out/*
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [check-release, build-linux, build-windows]
+    if: needs.check-release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.check-release.outputs.version }}
+          name: "Raimand AI Assistant ${{ needs.check-release.outputs.version }} (Linux & Windows)"
+          generate_release_notes: true
+          body: |
+            ## Raimand AI Assistant ${{ needs.check-release.outputs.version }}
+
+            Cross-platform standalone builds for **Linux** and **Windows**:
+
+            - **Linux (Debian / Ubuntu `.deb`)**: `raimand-ai-assistant_${{ needs.check-release.outputs.version_num }}_amd64.deb`
+            - **Linux (Portable `.tar.gz`)**: `raimand-ai-assistant-${{ needs.check-release.outputs.version }}-linux-x64.tar.gz`
+            - **Windows (Portable `.zip`)**: `raimand-ai-assistant-${{ needs.check-release.outputs.version }}-windows-x64.zip`
+
+            > **Requirements**: Node.js `>= 20.9` and PostgreSQL `>= 14`. See [README.md](https://github.com/w15800974-debug/raimand-ai-assistant/blob/main/README.md) or [README.fa.md](https://github.com/w15800974-debug/raimand-ai-assistant/blob/main/README.fa.md) for quick-start instructions.
+          files: |
+            artifacts/linux-release/*
+            artifacts/windows-release/*
