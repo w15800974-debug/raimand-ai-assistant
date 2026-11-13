@@ -1,0 +1,62 @@
+{
+  "name": "raimand-ai-assistant",
+  "version": "1.0.0",
+  "description": "Raimand (رایمند) — Open-source Persian RTL AI Assistant & Autonomous Agent platform with MCP support, Playwright browser automation, and native PDF/DOCX/PPTX generation.",
+  "license": "MIT",
+  "author": "Ali Hajian (علی حاجیان)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/w15800974-debug/raimand-ai-assistant.git"
+  },
+  "homepage": "https://github.com/w15800974-debug/raimand-ai-assistant",
+  "bugs": {
+    "url": "https://github.com/w15800974-debug/raimand-ai-assistant/issues"
+  },
+  "scripts": {
+    "postinstall": "node -e \"const fs=require('fs'); fs.mkdirSync('public/vendor',{recursive:true}); if(!fs.existsSync('public/vendor/chart.umd.js') && fs.existsSync('node_modules/chart.js/dist/chart.umd.js')) fs.copyFileSync('node_modules/chart.js/dist/chart.umd.js','public/vendor/chart.umd.js');\"",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@types/pdfkit": "^0.17.7",
+    "@xmldom/xmldom": "^0.9.12",
+    "chart.js": "^4.6.1",
+    "cron-parser": "^5.10.3",
+    "docx": "^9.15.2",
+    "dotenv": "17.3.1",
+    "drizzle-orm": "0.45.2",
+    "jszip": "^3.10.2",
+    "lucide-react": "^1.69.0",
+    "mammoth": "^1.13.0",
+    "next": "16.2.6",
+    "pdf-lib": "^1.17.1",
+    "pdf-parse": "^1.1.1",
+    "pdfkit": "^0.20.2",
+    "pg": "8.20.0",
+    "playwright-core": "^1.64.1",
+    "pptxgenjs": "^4.0.1",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "vazirmatn": "^33.0.3",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.1.17",
+    "@types/node": "22.19.15",
+    "@types/pg": "8.18.0",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "drizzle-kit": "0.31.10",
+    "eslint": "9.39.4",
+    "eslint-config-next": "16.2.6",
+    "postcss": "8.5.8",
+    "tailwindcss": "4.1.17",
+    "typescript": "5.9.3"
+  }
+}
