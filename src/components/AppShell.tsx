@@ -3,6 +3,7 @@
 import {
   Brain,
   CalendarClock,
+  Columns2,
   FolderKanban,
   FolderOpen,
   Menu,
@@ -20,11 +21,13 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { CommandPalette } from "./CommandPalette";
 import { api, cx } from "./ui";
 
 type Conv = { id: string; title: string; pinned: boolean; projectId: number | null; updatedAt: string };
 
 const NAV = [
+  { href: "/arena", label: "مقایسه مدل‌ها (Arena)", icon: Columns2 },
   { href: "/projects", label: "پروژه‌ها", icon: FolderKanban },
   { href: "/files", label: "فایل‌ها و کتابخانه", icon: FolderOpen },
   { href: "/connections", label: "اتصالات (MCP)", icon: PlugZap },
@@ -59,13 +62,15 @@ export function AppShell({ children, userName }: { children: ReactNode; userName
 
   useEffect(() => setOpen(false), [pathname]);
 
-  const toggleTheme = () => {
-    const d = !dark;
-    setDark(d);
-    document.documentElement.classList.toggle("dark", d);
-    localStorage.setItem("rm-theme", d ? "dark" : "light");
-    window.dispatchEvent(new Event("rm:theme"));
-  };
+  const toggleTheme = useCallback(() => {
+    setDark((prev) => {
+      const d = !prev;
+      document.documentElement.classList.toggle("dark", d);
+      localStorage.setItem("rm-theme", d ? "dark" : "light");
+      window.dispatchEvent(new Event("rm:theme"));
+      return d;
+    });
+  }, []);
 
   const filtered = convs.filter((c) => !q || c.title.includes(q));
   const activeId = pathname.startsWith("/chat/") ? pathname.split("/")[2] : null;
@@ -79,12 +84,22 @@ export function AppShell({ children, userName }: { children: ReactNode; userName
           </div>
           <div>
             <div className="font-extrabold text-lg leading-5 gradient-text">رایمند</div>
-            <div className="text-[11px] text-muted">Raymind AI</div>
+            <div className="text-[11px] text-muted">Raymind AI v2.0</div>
           </div>
         </Link>
-        <button onClick={toggleTheme} className="p-2 rounded-xl hover:bg-panel2 text-muted" title="تم">
-          {dark ? <Sun size={18} /> : <Moon size={18} />}
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => window.dispatchEvent(new Event("rm:command-palette"))}
+            className="px-2 py-1 rounded-lg bg-panel2 hover:bg-brand/10 hover:text-brand text-[11px] text-muted transition"
+            title="جست‌وجوی سراسری (Ctrl+K)"
+            dir="ltr"
+          >
+            Ctrl+K
+          </button>
+          <button onClick={toggleTheme} className="p-2 rounded-xl hover:bg-panel2 text-muted" title="تم">
+            {dark ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+        </div>
       </div>
       <div className="px-3">
         <button
@@ -139,7 +154,7 @@ export function AppShell({ children, userName }: { children: ReactNode; userName
           const Icon = n.icon;
           const active = pathname.startsWith(n.href);
           return (
-            <Link key={n.href} href={n.href} className={cx("flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition", active ? "bg-brand/10 text-brand" : "hover:bg-panel2 text-fg/80")}>
+            <Link key={n.href} href={n.href} className={cx("flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition", active ? "bg-brand/10 text-brand" : "hover:bg-panel2 text-fg/80")}>
               <Icon size={18} /> {n.label}
             </Link>
           );
@@ -151,6 +166,7 @@ export function AppShell({ children, userName }: { children: ReactNode; userName
 
   return (
     <div className="h-dvh flex bg-bg">
+      <CommandPalette onToggleTheme={toggleTheme} />
       <div className="hidden lg:block h-full">{sidebar}</div>
       {open && (
         <div className="lg:hidden fixed inset-0 z-40 flex">
@@ -159,11 +175,20 @@ export function AppShell({ children, userName }: { children: ReactNode; userName
         </div>
       )}
       <main className="flex-1 min-w-0 h-full flex flex-col">
-        <div className="lg:hidden flex items-center gap-3 px-4 py-3 border-b border-line bg-panel">
-          <button onClick={() => setOpen(!open)} className="p-1.5 rounded-lg hover:bg-panel2">
-            {open ? <X size={20} /> : <Menu size={20} />}
+        <div className="lg:hidden flex items-center justify-between gap-3 px-4 py-3 border-b border-line bg-panel">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setOpen(!open)} className="p-1.5 rounded-lg hover:bg-panel2">
+              {open ? <X size={20} /> : <Menu size={20} />}
+            </button>
+            <span className="font-extrabold gradient-text">رایمند</span>
+          </div>
+          <button
+            onClick={() => window.dispatchEvent(new Event("rm:command-palette"))}
+            className="p-1.5 rounded-lg hover:bg-panel2 text-muted"
+            title="جست‌وجوی سراسری"
+          >
+            <Search size={18} />
           </button>
-          <span className="font-extrabold gradient-text">رایمند</span>
         </div>
         <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
       </main>

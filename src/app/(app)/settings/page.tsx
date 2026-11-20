@@ -1,6 +1,6 @@
 "use client";
 
-import { Cpu, FolderOpen, Globe, Loader2, Pencil, Plus, Shield, Star, Trash2 } from "lucide-react";
+import { Bell, Cpu, FolderOpen, Globe, Loader2, Pencil, Plus, Send, Shield, Star, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { FolderPicker } from "@/components/FolderPicker";
 import { ProviderForm, type ProviderRow } from "@/components/ProviderForm";
@@ -21,6 +21,12 @@ type S = {
   maxAgentSteps: number;
   memoryEnabled: boolean;
   timezone: string;
+  notifyTelegramEnabled: boolean;
+  telegramBotToken: string;
+  telegramChatId: string;
+  notifyBaleEnabled: boolean;
+  baleBotToken: string;
+  baleChatId: string;
 };
 
 const TABS = [
@@ -28,12 +34,13 @@ const TABS = [
   { id: "workspace", label: "پوشه‌ها و عمومی", icon: FolderOpen },
   { id: "permissions", label: "مجوزها و مرورگر", icon: Shield },
   { id: "search", label: "جست‌وجوی وب", icon: Globe },
+  { id: "notifications", label: "اعلان‌ها (تلگرام / بله)", icon: Bell },
 ];
 
 const PERMS: { key: keyof S["permissions"]; label: string; hint: string }[] = [
   { key: "write", label: "نوشتن و ویرایش فایل‌ها / ساخت اسناد", hint: "ساخت و تغییر فایل داخل پوشه‌های مجاز" },
   { key: "delete", label: "حذف فایل‌ها", hint: "پاک کردن فایل و پوشه" },
-  { key: "code", label: "اجرای کد (JavaScript / Python / Bash)", hint: "اجرای اسکریپت روی سیستم شما" },
+  { key: "code", label: "اجرای کد و کامیت گیت (JS / Python / Bash / Git)", hint: "اجرای اسکریپت یا ثبت کامیت روی سیستم شما" },
   { key: "browser", label: "کنترل مرورگر", hint: "باز کردن سایت‌ها، کلیک، تایپ و دانلود" },
   { key: "net", label: "دسترسی به اینترنت (جست‌وجو و خواندن صفحات)", hint: "web_search و web_fetch" },
 ];
@@ -48,6 +55,8 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState("");
   const [installing, setInstalling] = useState(false);
   const [installLog, setInstallLog] = useState("");
+  const [testingNotify, setTestingNotify] = useState<"telegram" | "bale" | null>(null);
+  const [notifyMsg, setNotifyMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const load = useCallback(async () => {
     const [st, ps] = await Promise.all([api<S>("/api/settings"), api<(ProviderRow & { active: boolean })[]>("/api/providers")]);
@@ -70,12 +79,32 @@ export default function SettingsPage() {
     setTimeout(() => setSaved(""), 2500);
   };
 
+  const testNotification = async (channel: "telegram" | "bale") => {
+    if (!s) return;
+    setTestingNotify(channel);
+    setNotifyMsg(null);
+    try {
+      const r = await api<{ message: string }>("/api/notify/test", {
+        method: "POST",
+        json:
+          channel === "telegram"
+            ? { channel, token: s.telegramBotToken, chatId: s.telegramChatId }
+            : { channel, token: s.baleBotToken, chatId: s.baleChatId },
+      });
+      setNotifyMsg({ ok: true, text: r.message });
+    } catch (e) {
+      setNotifyMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setTestingNotify(null);
+    }
+  };
+
   if (!s) return <div className="p-10 text-muted">در حال بارگذاری...</div>;
 
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-4xl mx-auto p-6">
-        <PageHeader title="تنظیمات" subtitle="ارائه‌دهندگان مدل، پوشه‌ها، مجوزها و ابزارها" actions={saved ? <span className="text-sm text-good self-center">{saved}</span> : null} />
+        <PageHeader title="تنظیمات" subtitle="ارائه‌دهندگان مدل، پوشه‌ها، مجوزها، ابزارها و اعلان‌ها" actions={saved ? <span className="text-sm text-good self-center">{saved}</span> : null} />
         <div className="flex gap-1 mb-6 overflow-x-auto pb-1">
           {TABS.map((t) => {
             const I = t.icon;
@@ -266,6 +295,105 @@ export default function SettingsPage() {
                 <input dir="ltr" className={inputCls} value={s.searxUrl} onChange={(e) => setS({ ...s, searxUrl: e.target.value })} onBlur={() => save({ searxUrl: s.searxUrl })} placeholder="https://searx.example.com" />
               </Field>
             )}
+          </div>
+        )}
+
+        {tab === "notifications" && (
+          <div className="space-y-4">
+            <p className="text-sm text-muted">
+              پس از اجرای هر وظیفهٔ زمان‌بندی‌شده (Schedules)، نتیجه به‌صورت خودکار به ربات تلگرام یا پیام‌رسان بلهٔ شما ارسال می‌شود.
+            </p>
+            {notifyMsg && (
+              <div className={cx("rounded-xl p-3 text-sm", notifyMsg.ok ? "bg-good/10 text-good" : "bg-bad/10 text-bad")}>
+                {notifyMsg.text}
+              </div>
+            )}
+
+            <div className="rounded-2xl border border-line bg-panel p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold">ربات تلگرام (Telegram Bot)</h3>
+                  <p className="text-xs text-muted mt-0.5">ارسال گزارش‌ها از طریق BotFather و Telegram Bot API</p>
+                </div>
+                <Switch checked={s.notifyTelegramEnabled} onChange={(v) => save({ notifyTelegramEnabled: v })} />
+              </div>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <Field label="توکن ربات تلگرام (Bot Token)">
+                  <input
+                    dir="ltr"
+                    type="password"
+                    className={inputCls}
+                    placeholder="123456789:AAF..."
+                    value={s.telegramBotToken}
+                    onChange={(e) => setS({ ...s, telegramBotToken: e.target.value })}
+                    onBlur={() => save({ telegramBotToken: s.telegramBotToken })}
+                  />
+                </Field>
+                <Field label="شناسه چت (Chat ID)">
+                  <input
+                    dir="ltr"
+                    className={inputCls}
+                    placeholder="e.g. 123456789 or @channel"
+                    value={s.telegramChatId}
+                    onChange={(e) => setS({ ...s, telegramChatId: e.target.value })}
+                    onBlur={() => save({ telegramChatId: s.telegramChatId })}
+                  />
+                </Field>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  className={btnCls("soft", "sm")}
+                  disabled={testingNotify === "telegram" || !s.telegramBotToken || !s.telegramChatId}
+                  onClick={() => void testNotification("telegram")}
+                >
+                  {testingNotify === "telegram" ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                  ارسال پیام آزمایشی به تلگرام
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-line bg-panel p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold">ربات پیام‌رسان بله (Bale Bot)</h3>
+                  <p className="text-xs text-muted mt-0.5">ارسال گزارش‌ها بدون نیاز به فیلترشکن از طریق بازوی بله (tapi.bale.ai)</p>
+                </div>
+                <Switch checked={s.notifyBaleEnabled} onChange={(v) => save({ notifyBaleEnabled: v })} />
+              </div>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <Field label="توکن بازوی بله (Bot Token)">
+                  <input
+                    dir="ltr"
+                    type="password"
+                    className={inputCls}
+                    placeholder="123456789:..."
+                    value={s.baleBotToken}
+                    onChange={(e) => setS({ ...s, baleBotToken: e.target.value })}
+                    onBlur={() => save({ baleBotToken: s.baleBotToken })}
+                  />
+                </Field>
+                <Field label="شناسه چت بله (Chat ID)">
+                  <input
+                    dir="ltr"
+                    className={inputCls}
+                    placeholder="e.g. 123456789"
+                    value={s.baleChatId}
+                    onChange={(e) => setS({ ...s, baleChatId: e.target.value })}
+                    onBlur={() => save({ baleChatId: s.baleChatId })}
+                  />
+                </Field>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  className={btnCls("soft", "sm")}
+                  disabled={testingNotify === "bale" || !s.baleBotToken || !s.baleChatId}
+                  onClick={() => void testNotification("bale")}
+                >
+                  {testingNotify === "bale" ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                  ارسال پیام آزمایشی به بله
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
