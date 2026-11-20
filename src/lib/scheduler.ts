@@ -2,6 +2,7 @@ import { and, eq, isNotNull, lte } from "drizzle-orm";
 import { db } from "@/db";
 import { conversations, scheduleRuns, schedules } from "@/db/schema";
 import { runTurn } from "./agent";
+import { notifyScheduleResult } from "./notify";
 import { nextRun } from "./schedule-utils";
 
 const g = globalThis as typeof globalThis & { __rmSched?: NodeJS.Timeout; __rmSchedRunning?: Set<number> };
@@ -13,6 +14,8 @@ export async function runSchedule(id: number): Promise<{ ok: boolean; runId: num
   running.add(id);
   const [run] = await db.insert(scheduleRuns).values({ scheduleId: id, status: "running" }).returning();
   let ok = false;
+  let resultText = "";
+  let errorText = "";
   try {
     const [conv] = await db
       .insert(conversations)
@@ -31,14 +34,17 @@ export async function runSchedule(id: number): Promise<{ ok: boolean; runId: num
     });
     clearTimeout(timer);
     ok = r.ok;
+    resultText = r.text;
+    errorText = r.error ?? "";
     await db
       .update(scheduleRuns)
-      .set({ status: r.ok ? "success" : "error", finishedAt: new Date(), result: r.text.slice(0, 20000), error: r.error ?? "" })
+      .set({ status: r.ok ? "success" : "error", finishedAt: new Date(), result: r.text.slice(0, 20000), error: errorText })
       .where(eq(scheduleRuns.id, run.id));
   } catch (e) {
+    errorText = e instanceof Error ? e.message : String(e);
     await db
       .update(scheduleRuns)
-      .set({ status: "error", finishedAt: new Date(), error: e instanceof Error ? e.message : String(e) })
+      .set({ status: "error", finishedAt: new Date(), error: errorText })
       .where(eq(scheduleRuns.id, run.id));
   } finally {
     running.delete(id);
@@ -55,6 +61,7 @@ export async function runSchedule(id: number): Promise<{ ok: boolean; runId: num
         })
         .where(eq(schedules.id, id));
     }
+    void notifyScheduleResult({ name: s.name, ok, result: resultText, error: errorText }).catch(() => {});
   }
   return { ok, runId: run.id };
 }

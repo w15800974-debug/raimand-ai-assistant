@@ -23,6 +23,12 @@ export type AppSettings = {
   maxAgentSteps: number;
   memoryEnabled: boolean;
   timezone: string;
+  notifyTelegramEnabled: boolean;
+  telegramBotToken: string;
+  telegramChatId: string;
+  notifyBaleEnabled: boolean;
+  baleBotToken: string;
+  baleChatId: string;
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -41,6 +47,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   maxAgentSteps: 30,
   memoryEnabled: true,
   timezone: "Asia/Tehran",
+  notifyTelegramEnabled: false,
+  telegramBotToken: "",
+  telegramChatId: "",
+  notifyBaleEnabled: false,
+  baleBotToken: "",
+  baleChatId: "",
 };
 
 export async function getSettings(): Promise<AppSettings> {

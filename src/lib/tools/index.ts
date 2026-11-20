@@ -7,11 +7,12 @@ import type { PermCategory } from "@/lib/settings";
 import { browserTools } from "./browser";
 import { docTools } from "./docs";
 import { fsTools } from "./fs";
+import { gitTools } from "./git";
 import { systemTools } from "./system";
 import type { ToolDef } from "./types";
 import { webTools } from "./web";
 
-export const BUILTIN_TOOLS: ToolDef[] = [...fsTools, ...docTools, ...webTools, ...systemTools, ...browserTools];
+export const BUILTIN_TOOLS: ToolDef[] = [...fsTools, ...docTools, ...webTools, ...systemTools, ...browserTools, ...gitTools];
 
 export type ResolvedTool = {
   name: string;
