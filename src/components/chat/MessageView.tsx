@@ -52,6 +52,10 @@ const LABELS: Record<string, [string, string]> = {
   update_plan: ["به‌روزرسانی برنامه", "🗺️"],
   schedule_task: ["زمان‌بندی وظیفه", "⏰"],
   browser: ["کنترل مرورگر", "🧭"],
+  git_status: ["وضعیت گیت", "🌿"],
+  git_diff: ["تغییرات کد (Diff)", "🔍"],
+  git_log: ["تاریخچه کامیت‌ها", "📜"],
+  git_commit: ["ثبت کامیت گیت", "✅"],
 };
 
 function toolLabel(name: string): [string, string] {
