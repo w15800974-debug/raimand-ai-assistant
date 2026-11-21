@@ -3,6 +3,7 @@ import path from "node:path";
 import { readDocx, summarizeDocx } from "./docx";
 import { inspectPptx, summarizePptx } from "./pptx";
 import { readPdf } from "./pdf";
+import { readXlsx, summarizeXlsx } from "./xlsx";
 import { loadZip, saveZip } from "./xml";
 
 export const TEXT_EXT = new Set([
@@ -13,6 +14,7 @@ export async function readDocument(abs: string): Promise<{ kind: string; text: s
   const ext = path.extname(abs).toLowerCase();
   if (ext === ".docx") return { kind: "docx", text: summarizeDocx(await readDocx(abs)) };
   if (ext === ".pptx") return { kind: "pptx", text: summarizePptx(await inspectPptx(abs)) };
+  if (ext === ".xlsx") return { kind: "xlsx", text: summarizeXlsx(await readXlsx(abs)) };
   if (ext === ".pdf") {
     const r = await readPdf(abs);
     return { kind: "pdf", text: `صفحات: ${r.pages}\n${r.text}` };

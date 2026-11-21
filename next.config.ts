@@ -11,6 +11,7 @@ const nextConfig: NextConfig = {
     "playwright-core",
     "pptxgenjs",
     "docx",
+    "exceljs",
     "mammoth",
     "jszip",
     "@xmldom/xmldom",

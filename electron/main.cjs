@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, dialog } = require("electron");
+const { app, BrowserWindow, Tray, Menu, Notification, globalShortcut, nativeImage, shell, dialog } = require("electron");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -7,6 +7,12 @@ const path = require("node:path");
 
 let mainWindow = null;
 let serverProc = null;
+let tray = null;
+let isQuitting = false;
+let appBaseUrl = "";
+
+const TRAY_ICON_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAKklEQVR4nGP8z8DAwMDAxMDAwMDwHwYGJgYmBigY1TBq2Khho4aNGjZIAAB/wQMB14a0ZQAAAABJRU5ErkJggg==";
 
 function getFreePort() {
   return new Promise((resolve, reject) => {
@@ -98,13 +104,67 @@ async function startNextServer(port, envVars) {
   serverProc.stderr.on("data", (d) => process.stderr.write(`[next] ${d}`));
 }
 
+function toggleWindow() {
+  if (!mainWindow) return;
+  if (mainWindow.isVisible() && mainWindow.isFocused()) {
+    mainWindow.hide();
+  } else {
+    mainWindow.show();
+    mainWindow.focus();
+  }
+}
+
+function setupTray() {
+  if (tray) return;
+  const icon = nativeImage.createFromDataURL(TRAY_ICON_DATA_URL);
+  tray = new Tray(icon);
+  tray.setToolTip("Raimand AI Assistant (رایمند)");
+  const menu = Menu.buildFromTemplate([
+    {
+      label: "نمایش / مخفی‌سازی رایمند (Alt+Space)",
+      click: () => toggleWindow(),
+    },
+    {
+      label: "مقایسه مدل‌ها (Arena)",
+      click: () => {
+        if (mainWindow && appBaseUrl) {
+          mainWindow.show();
+          mainWindow.focus();
+          mainWindow.loadURL(`${appBaseUrl}/arena`).catch(() => {});
+        }
+      },
+    },
+    { type: "separator" },
+    {
+      label: "خروج کامل (Quit)",
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      },
+    },
+  ]);
+  tray.setContextMenu(menu);
+  tray.on("click", () => toggleWindow());
+}
+
+function registerShortcuts() {
+  const shortcuts = ["Alt+Space", "CommandOrControl+Shift+R"];
+  for (const sc of shortcuts) {
+    try {
+      globalShortcut.register(sc, () => toggleWindow());
+    } catch {
+      /* ignore if taken by OS */
+    }
+  }
+}
+
 async function createWindow() {
   const { envVars } = ensureEnvConfig();
   const port = await getFreePort();
-  const baseUrl = `http://127.0.0.1:${port}`;
+  appBaseUrl = `http://127.0.0.1:${port}`;
 
   await startNextServer(port, envVars);
-  await waitForServer(`${baseUrl}/api/health`);
+  await waitForServer(`${appBaseUrl}/api/health`);
 
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -120,18 +180,34 @@ async function createWindow() {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (!url.startsWith(baseUrl)) {
+    if (!url.startsWith(appBaseUrl)) {
       shell.openExternal(url);
       return { action: "deny" };
     }
     return { action: "allow" };
   });
 
-  await mainWindow.loadURL(baseUrl);
+  mainWindow.on("close", (e) => {
+    if (!isQuitting && tray) {
+      e.preventDefault();
+      mainWindow.hide();
+      if (Notification.isSupported()) {
+        new Notification({
+          title: "رایمند در پس‌زمینه فعال است",
+          body: "برای باز کردن سریع از Alt+Space یا آیکون کنار ساعت استفاده کنید.",
+        }).show();
+      }
+    }
+  });
+
+  await mainWindow.loadURL(appBaseUrl);
 
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
+
+  setupTray();
+  registerShortcuts();
 }
 
 function stopServer() {
@@ -153,17 +229,24 @@ app.whenReady().then(async () => {
   }
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (mainWindow) {
+      mainWindow.show();
+      mainWindow.focus();
+    } else if (BrowserWindow.getAllWindows().length === 0) {
       createWindow().catch(() => {});
     }
   });
 });
 
 app.on("window-all-closed", () => {
-  stopServer();
-  if (process.platform !== "darwin") app.quit();
+  if (isQuitting) {
+    stopServer();
+    if (process.platform !== "darwin") app.quit();
+  }
 });
 
 app.on("before-quit", () => {
+  isQuitting = true;
+  globalShortcut.unregisterAll();
   stopServer();
 });

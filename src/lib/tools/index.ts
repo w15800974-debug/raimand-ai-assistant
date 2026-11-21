@@ -8,11 +8,12 @@ import { browserTools } from "./browser";
 import { docTools } from "./docs";
 import { fsTools } from "./fs";
 import { gitTools } from "./git";
+import { mediaTools } from "./media";
 import { systemTools } from "./system";
 import type { ToolDef } from "./types";
 import { webTools } from "./web";
 
-export const BUILTIN_TOOLS: ToolDef[] = [...fsTools, ...docTools, ...webTools, ...systemTools, ...browserTools, ...gitTools];
+export const BUILTIN_TOOLS: ToolDef[] = [...fsTools, ...docTools, ...webTools, ...systemTools, ...browserTools, ...gitTools, ...mediaTools];
 
 export type ResolvedTool = {
   name: string;
