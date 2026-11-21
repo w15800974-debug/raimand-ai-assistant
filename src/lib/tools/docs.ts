@@ -4,6 +4,7 @@ import { resolveSafe } from "@/lib/paths";
 import { createPptx, editPptx } from "@/lib/docs/pptx";
 import { createDocx, editDocx } from "@/lib/docs/docx";
 import { createPdf, editPdf } from "@/lib/docs/pdf";
+import { createXlsx, readXlsx, summarizeXlsx } from "@/lib/docs/xlsx";
 import { copyIfNeeded, officeXml, readDocument } from "@/lib/docs/office";
 import { obj, str, type ToolDef } from "./types";
 
@@ -100,17 +101,18 @@ export const docTools: ToolDef[] = [
     name: "pptx_edit",
     description: `Edit an existing PowerPoint file in place (real changes to the file XML). Slide numbers and shape indexes are 1-based (see doc_read). 'shape' can be an index, a name, or "all"; omit slide or use "all" to apply on all slides.
 operations: [
- {op:"set_slide_background", slide, color}
+ {op:"set_slide_background", slide, color}        // e.g. make slide 2 blue → color "2563EB"
  {op:"set_shape_fill", slide, shape, color}
  {op:"set_text_color", slide, shape?, color}
  {op:"set_font_size", slide, shape?, size}  {op:"set_bold", slide, shape?, bold}
  {op:"replace_text", slide?, shape?, find, replace, regex?}
- {op:"set_shape_text", slide, shape, text}
- {op:"set_geometry", slide, shape, x,y,w,h}
+ {op:"set_shape_text", slide, shape, text}   // multi-line with \\n
+ {op:"set_geometry", slide, shape, x,y,w,h}  // inches
  {op:"delete_shape", slide, shape}
  {op:"add_textbox", slide, text, x,y,w,h, fontSize, color, fill, bold, align, name}
  {op:"duplicate_slide", slide} {op:"delete_slide", slide} {op:"move_slide", from, to}
-]`,
+]
+For anything else use office_xml for raw XML control.`,
     category: "write",
     parameters: obj({ path: str("pptx path"), output: str("optional different output path (keeps original)"), operations: { type: "array", items: { type: "object" } } }, ["path", "operations"]),
     async run(a, ctx) {
@@ -122,7 +124,17 @@ operations: [
   },
   {
     name: "docx_edit",
-    description: `Edit an existing Word file in place. Paragraph indexes are 1-based (see doc_read; table cell paragraphs are included).`,
+    description: `Edit an existing Word file in place. Paragraph indexes are 1-based (see doc_read; table cell paragraphs are included).
+operations: [
+ {op:"replace_text", find, replace, regex?}
+ {op:"set_text", index, text, style?, color?, bold?, size?, align?}
+ {op:"delete", index}
+ {op:"insert_after", index (0 = at start), text, style? ("Heading1","Heading2","Normal"...), bold?, color?, size?, align?}
+ {op:"append", text, style?, bold?, color?, size?, align?}
+ {op:"set_format", index? | contains?, bold?, italic?, underline?, color?, size? (pt), highlight? (yellow/hex), font?, align? ("left|right|center|justify"), style?}
+ {op:"add_table", after (paragraph index), header:[..], rows:[[..]], headerColor?}
+]
+For anything else use office_xml for raw XML control.`,
     category: "write",
     parameters: obj({ path: str("docx path"), output: str("optional different output path"), operations: { type: "array", items: { type: "object" } } }, ["path", "operations"]),
     async run(a, ctx) {
@@ -134,7 +146,7 @@ operations: [
   },
   {
     name: "pdf_edit",
-    description: `Edit an existing PDF structurally.`,
+    description: `Edit an existing PDF structurally. operations: [ {op:"delete_pages", pages:[2,3]} {op:"keep_pages", pages:[1,2]} {op:"reorder", order:[3,1,2]} {op:"merge", files:["b.pdf"]} {op:"rotate", pages:"all"|[1], degrees:90} {op:"add_text", page:"all"|1, text (Latin only), x,y,size,color,rotate,opacity} {op:"set_metadata", title, author} ]. To change Persian content of a PDF, read it with doc_read and regenerate it with pdf_create.`,
     category: "write",
     parameters: obj({ path: str("pdf path"), output: str("optional different output path"), operations: { type: "array", items: { type: "object" } } }, ["path", "operations"]),
     async run(a, ctx) {
@@ -146,7 +158,8 @@ operations: [
   },
   {
     name: "office_xml",
-    description: "Low-level full-control access to any OOXML file.",
+    description:
+      "Low-level full-control access to any OOXML file (docx/pptx/xlsx are zip archives of XML). action=list shows all parts; read returns a part's XML (offset/limit); write replaces a whole part; replace does find/replace inside a part. Use for edits the high-level edit tools do not cover (themes, tables, charts, styles, notes, headers...).",
     category: "write",
     parameters: obj(
       {
@@ -170,6 +183,29 @@ operations: [
       const r = await officeXml(src, out, a);
       if (a.action === "write" || a.action === "replace") await ctx.fileCreated(out);
       return r;
+    },
+  },
+  {
+    name: "xlsx_create",
+    description: "Create a REAL Excel (.xlsx) workbook with RTL/Persian support, styled headers, multiple sheets, and Excel formulas (prefix formula cells with =, e.g. =SUM(B2:B10)). spec = { rtl (default true), primaryColor (hex), sheets: [{ name, headers: [...], rows: [[...]] }] }",
+    category: "write",
+    parameters: obj({ path: str("output path e.g. reports/budget.xlsx"), spec: { type: "object", description: "workbook spec with sheets, headers, rows, formulas" } }, ["path", "spec"]),
+    async run(a, ctx) {
+      const { src } = await outPath(a, ".xlsx");
+      const r = await createXlsx(src, a.spec || {});
+      await ctx.fileCreated(src);
+      return { path: src, ...r };
+    },
+  },
+  {
+    name: "xlsx_read",
+    description: "Read and summarize an Excel (.xlsx) workbook (all sheets, cell values and formulas).",
+    category: null,
+    parameters: obj({ path: str("xlsx file path") }, ["path"]),
+    async run(a) {
+      const abs = await resolveSafe(a.path);
+      const data = await readXlsx(abs);
+      return { path: abs, sheetCount: data.sheets.length, content: summarizeXlsx(data).slice(0, 60000) };
     },
   },
 ];

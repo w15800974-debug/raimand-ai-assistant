@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  BarChart3,
+  BookMarked,
   Brain,
   CalendarClock,
   Columns2,
@@ -129,6 +131,8 @@ export function CommandPalette({ onToggleTheme }: { onToggleTheme: () => void })
     ];
 
     const pages: Item[] = [
+      { id: "nav-prompts", label: "کتابخانه پرامپت‌ها", group: "صفحات", icon: <BookMarked size={16} />, keywords: "prompts slash templates", run: () => go("/prompts") },
+      { id: "nav-analytics", label: "آمار و مصرف", group: "صفحات", icon: <BarChart3 size={16} />, keywords: "analytics usage tokens stats", run: () => go("/analytics") },
       { id: "nav-projects", label: "پروژه‌ها", group: "صفحات", icon: <FolderKanban size={16} />, keywords: "projects", run: () => go("/projects") },
       { id: "nav-files", label: "فایل‌ها و کتابخانه", group: "صفحات", icon: <FolderOpen size={16} />, keywords: "files library", run: () => go("/files") },
       { id: "nav-connections", label: "اتصالات (MCP)", group: "صفحات", icon: <PlugZap size={16} />, keywords: "mcp connections github", run: () => go("/connections") },

@@ -1,8 +1,8 @@
 <div align="center">
 
-# Raimand (رایمند) v2.0 — Autonomous Persian RTL AI Assistant
+# Raimand (رایمند) v3.0 — Autonomous Bilingual AI Assistant
 
-**A local-first, full-stack Desktop & Web AI Assistant and Autonomous Agent workspace built with Electron, Next.js 16, PostgreSQL, MCP, Playwright, and native document authoring.**
+**A local-first, full-stack Desktop & Web AI Assistant and Autonomous Agent workspace built with Electron, Next.js 16, PostgreSQL, MCP, Playwright, Voice Mode, and native PDF/DOCX/PPTX/XLSX authoring.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-33-47848F?logo=electron)](https://www.electronjs.org/)
@@ -17,93 +17,63 @@
 
 ---
 
-## What's New in v2.0.0
+## What's New in v3.0.0
 
-- **Side-by-Side Model Comparison Arena (`/arena`)**: Stream responses from two different AI models or providers concurrently in a split-screen view with real-time latency tracking and multi-turn comparison.
-- **Built-in Git Assistant & Code Review Tools (`src/lib/tools/git.ts`)**: Inspect repository status (`git_status`), review staged/unstaged diffs (`git_diff`), browse commit history (`git_log`), and create approval-gated local commits (`git_commit`).
-- **Telegram & Bale Scheduler Notifications (`src/lib/notify.ts`)**: Automatically deliver scheduled task reports to your **Telegram Bot** or **Bale Bot** (`tapi.bale.ai`) with one-click test alerts in Settings.
-- **Global Command Palette (`Ctrl+K`)**: Instant keyboard navigation (`src/components/CommandPalette.tsx`) across conversations, workspace files, projects, pages, and quick actions.
+- **Excel (`.xlsx`) Authoring & Analysis (`xlsx_create`, `xlsx_read`)**: Create multi-sheet, RTL-aware Excel workbooks with styled headers and live Excel formulas (`=SUM(...)`, `=AVERAGE(...)`) alongside PDF, Word, and PowerPoint.
+- **Voice Mode (STT & TTS)**: Microphone voice input (Web Speech API + Whisper `/api/audio/transcribe` fallback) and one-click Read Aloud on assistant messages.
+- **Prompt Library & `/slash` Commands (`/prompts`)**: Save, categorize, and trigger reusable prompts directly from the chat composer by typing `/`.
+- **Message Edit & Regenerate**: Edit any previous user message to branch & resend, or regenerate any assistant response cleanly.
+- **Conversation Export & Usage Analytics (`/analytics`)**: Export any chat to **Markdown** or **HTML/Print-PDF**, and inspect usage metrics, estimated tokens, top models, and generated artifacts.
+- **Native Desktop System Tray & Global Shortcut**: Minimize to tray so background schedules keep running, summon Raimand anywhere with `Alt+Space` (`Ctrl+Shift+R`), and receive native OS notifications.
+- **Bilingual UI (Persian RTL + English LTR)**: One-click `FA / EN` language switcher in the sidebar with automatic `dir="rtl"` / `dir="ltr"` switching.
+- **Image Generation & OCR (`generate_image`, `ocr_image`)**: Generate images via OpenAI-compatible Images APIs and extract Persian/English text from scanned images.
+- **Full Backup & Restore (`/api/backup`)**: Export and restore conversations, memories, projects, prompts, and non-sensitive settings as JSON.
 
----
-
-## Overview
-
-**Raimand (رایمند)** is an open-source, local-first AI assistant and autonomous agent **desktop application** (and self-hosted web app) designed from the ground up with first-class **Persian (RTL)** typography (`Vazirmatn`) and **local-first privacy**. Built on Electron, Next.js App Router, React 19, Drizzle ORM, and PostgreSQL, Raimand runs in its own dedicated native window on **Windows** and **Linux**, connecting to any **OpenAI-compatible API provider** (OpenAI, OpenRouter, Groq, or local LLMs such as Ollama/LM Studio) while keeping your API keys, conversations, long-term memories, and workspace files on your own machine.
-
-## Key Features
-
-- **Native Desktop App (Windows & Linux)**: Built with Electron (`electron/main.cjs`) — installs like a standard desktop program, launches in its own dedicated window (no browser tab required), and bundles Node.js inside.
-- **Model Comparison Arena (Split View)**: Compare any two models side-by-side in real time with shared system instructions and latency measurement.
-- **Autonomous Agent Mode & Git Code Review**: Multi-step tool execution loop (`src/lib/agent.ts`) with streaming responses, interactive approval policies (`allow` / `ask` / `deny`), and native Git tools (`git_status`, `git_diff`, `git_log`, `git_commit`).
-- **Sandboxed Workspace File System**: Read, write, search, upload, preview, and organize files strictly within your configured `workspaceRoot` and explicitly attached folders (`src/lib/paths.ts`).
-- **Native Document Generation & Parsing**: Create and edit real **PDF** (`pdfkit`, `pdf-lib`, `pdf-parse`), **Word `.docx`** (`docx`, `mammoth`), and **PowerPoint `.pptx`** (`pptxgenjs`) files directly from agent workflows.
-- **Browser Automation & Web Research**: Integrated **Playwright** (`playwright-core`) browser control with automatic headless/headed switching and built-in Chromium installer, plus web search integrations (Tavily, Brave, SearXNG).
-- **Model Context Protocol (MCP)**: Native MCP client (`@modelcontextprotocol/sdk`) to connect external tool servers and manage tools dynamically from the UI.
-- **Generative UI & HTML Previews**: Interactive rendered UI frames (`UIFrame`) powered by local `Chart.js` and sandboxed HTML previews.
-- **Long-Term Memory, Projects, Cron Scheduler & Bot Alerts**: Persistent memories, project-scoped workspaces, background cron scheduler, and automatic Telegram/Bale delivery.
-- **Global Command Palette (`Ctrl+K`)**: Fast keyboard search across chats, projects, files, and settings.
+### Highlights from v2.0.0
+- **Side-by-Side Model Comparison Arena (`/arena`)**
+- **Built-in Git Assistant & Code Review Tools (`git_status`, `git_diff`, `git_log`, `git_commit`)**
+- **Telegram & Bale Scheduler Notifications (`src/lib/notify.ts`)**
+- **Global Command Palette (`Ctrl+K`)**
 
 ---
 
 ## Download Desktop App (Windows & Linux)
 
-Installable native desktop packages are built for **Windows** and **Linux** on the [GitHub Releases](https://github.com/w15800974-debug/raimand-ai-assistant/releases) page:
+Installable native desktop packages are built automatically on the [GitHub Releases](https://github.com/w15800974-debug/raimand-ai-assistant/releases) page:
 
 | Platform | Package Format | Install & Launch |
 |---|---|---|
-| **Windows (Installer)** | `Raimand AI Assistant Setup <version>.exe` | Double-click to install (creates Start Menu & Desktop shortcuts) |
+| **Windows (Installer)** | `Raimand AI Assistant Setup <version>.exe` | Double-click to install (Start Menu & Desktop shortcuts) |
 | **Windows (Portable)** | `Raimand AI Assistant <version>.exe` | Run directly without installation |
 | **Linux (Ubuntu / Debian)** | `raimand-ai-assistant_<version>_amd64.deb` | `sudo dpkg -i raimand-ai-assistant_*.deb` then launch from app menu |
 | **Linux (Portable)** | `Raimand AI Assistant-<version>.AppImage` | `chmod +x *.AppImage && ./Raimand*.AppImage` |
 
-> **Database Prerequisite**: The desktop app bundles Node.js and Chromium automatically, and requires **PostgreSQL `>= 14`** running locally (`app_db` database with schema pushed via `npx drizzle-kit push`). On first launch, the desktop app creates a `.env` file in your OS user-data directory if one does not exist.
+> **Database Prerequisite**: Bundles Node.js and Chromium automatically; requires **PostgreSQL `>= 14`** running locally (`app_db` database with schema pushed via `npx drizzle-kit push`).
 
 ---
 
 ## Quick Start (From Source)
 
-### 1. Prerequisites
-- **Node.js 20.9+** (required by Next.js 16)
-- **PostgreSQL 14+**
-- **Git** (optional, required for Git Assistant tools)
-
-### 2. Clone & Install
-
 ```bash
 git clone https://github.com/w15800974-debug/raimand-ai-assistant.git
 cd raimand-ai-assistant
 npm install
-```
-
-### 3. Configure Database & Environment
-
-```bash
 createdb app_db
 cp .env.example .env
 npx drizzle-kit push
-```
 
-### 4. Run as Web App or Desktop App
-
-```bash
-# Development web server (http://localhost:3000)
+# Run web dev server (http://localhost:3000)
 npm run dev
 
 # Or build and launch the Electron Desktop App
 npm run build
 npm run electron:start
-
-# Or build native installers (.deb / .AppImage / .exe)
-npm run electron:build
 ```
 
 ---
 
-## Contributing & Security
+## Contributing, Security & License
 
-- Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting a Pull Request.
-- For security vulnerabilities or sandboxing questions, see [SECURITY.md](SECURITY.md).
-
-## License
-
-Licensed under the [MIT License](LICENSE) — Copyright (c) 2026 Ali Hajian (`w15800974-debug`).
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a Pull Request.
+- See [SECURITY.md](SECURITY.md) for sandboxing architecture and vulnerability reporting.
+- Licensed under the [MIT License](LICENSE) — Copyright (c) 2026 Ali Hajian (`w15800974-debug`).

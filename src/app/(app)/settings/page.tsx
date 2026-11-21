@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Cpu, FolderOpen, Globe, Loader2, Pencil, Plus, Send, Shield, Star, Trash2 } from "lucide-react";
+import { Bell, Cpu, Download, FolderOpen, Globe, Loader2, Pencil, Plus, Send, Shield, Star, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { FolderPicker } from "@/components/FolderPicker";
 import { ProviderForm, type ProviderRow } from "@/components/ProviderForm";
@@ -203,6 +203,37 @@ export default function SettingsPage() {
                 <div className="text-xs text-muted">رایمند موارد مهم دربارهٔ شما را به خاطر می‌سپارد</div>
               </div>
               <Switch checked={s.memoryEnabled} onChange={(v) => save({ memoryEnabled: v })} />
+            </div>
+                        <div className="mt-6 pt-5 border-t border-line">
+              <h3 className="font-bold text-sm mb-1">پشتیبان‌گیری و بازیابی (Backup & Restore)</h3>
+              <p className="text-xs text-muted mb-3">از کل گفتگوها، حافظهٔ بلندمدت، پروژه‌ها، پرامپت‌ها و تنظیمات (بدون کلیدهای API) خروجی JSON بگیرید یا فایل پشتیبان قبلی را بازیابی کنید.</p>
+              <div className="flex flex-wrap gap-2">
+                <a href="/api/backup" download className={btnCls("soft", "sm")}>
+                  <Download size={14} /> دانلود فایل پشتیبان (JSON)
+                </a>
+                <label className={btnCls("ghost", "sm") + " cursor-pointer"}>
+                  <Upload size={14} /> بازیابی از فایل پشتیبان
+                  <input
+                    type="file"
+                    accept="application/json,.json"
+                    hidden
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      try {
+                        const text = await f.text();
+                        const res = await api<{ restored: { conversations: number; memories: number; projects: number } }>("/api/backup", { method: "POST", json: JSON.parse(text) });
+                        setSaved(`بازیابی شد ✓ (${res.restored.conversations} گفتگو، ${res.restored.memories} حافظه، ${res.restored.projects} پروژه)`);
+                        window.dispatchEvent(new Event("rm:conversations"));
+                        void load();
+                      } catch (err) {
+                        setSaved(err instanceof Error ? err.message : "خطا در بازیابی");
+                      }
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              </div>
             </div>
             <FolderPicker
               open={!!pick}

@@ -1,6 +1,6 @@
 {
   "name": "raimand-ai-assistant",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Raimand (رایمند) — Open-source Persian RTL AI Assistant & Autonomous Agent desktop & web platform with MCP support, Playwright, and native PDF/DOCX/PPTX generation.",
   "main": "electron/main.cjs",
   "license": "MIT",
@@ -77,6 +77,7 @@
     "docx": "^9.15.2",
     "dotenv": "17.3.1",
     "drizzle-orm": "0.45.2",
+    "exceljs": "^4.4.0",
     "jszip": "^3.10.2",
     "lucide-react": "^1.69.0",
     "mammoth": "^1.13.0",

@@ -43,7 +43,7 @@ async function buildSystemPrompt(opts: {
   }
   lines.push(`## قواعد استفاده از ابزارها
 - کارها را واقعاً با ابزار انجام بده؛ هرگز ادعا نکن فایلی ساخته یا تغییر داده‌ای مگر ابزار موفق بوده باشد. بعد از ساخت/ویرایش فایل، مسیر دقیق را به کاربر بگو.
-- **اسناد**: برای PowerPoint/Word/PDF از pptx_create / docx_create / pdf_create استفاده کن و محتوای کامل، غنی و باکیفیت بساز (آزمون، جزوه، گزارش، ارائه حرفه‌ای با طراحی و رنگ‌بندی مناسب). برای ویرایش، اول با doc_read فایل را بخوان، سپس با pptx_edit / docx_edit / pdf_edit (یا در موارد خاص office_xml) تغییر واقعی بده. مثلاً «رنگ اسلاید دوم را آبی کن» = doc_read سپس pptx_edit با set_slide_background (رنگ هگز مثل 2563EB). رنگ‌ها را همیشه به صورت هگز بده.
+- **اسناد و اکسل**: برای PowerPoint/Word/PDF/Excel از pptx_create / docx_create / pdf_create / xlsx_create و xlsx_read استفاده کن. برای تولید تصویر از generate_image و برای استخراج متن فارسی/انگلیسی از عکس از ocr_image استفاده کن. و محتوای کامل، غنی و باکیفیت بساز (آزمون، جزوه، گزارش، ارائه حرفه‌ای با طراحی و رنگ‌بندی مناسب). برای ویرایش، اول با doc_read فایل را بخوان، سپس با pptx_edit / docx_edit / pdf_edit (یا در موارد خاص office_xml) تغییر واقعی بده. مثلاً «رنگ اسلاید دوم را آبی کن» = doc_read سپس pptx_edit با set_slide_background (رنگ هگز مثل 2563EB). رنگ‌ها را همیشه به صورت هگز بده.
 - **رابط تعاملی (Generative UI)**: هر وقت داشبورد، نمودار، فرم، ماشین‌حساب، شبیه‌ساز، بازی، جدول تعاملی، طرح اولیهٔ صفحه یا پیش‌نمایش کدی خواستند یا مفید بود، از render_ui استفاده کن. HTML/CSS/JS کامل و کارا، راست‌چین، زیبا و واقعاً تعاملی بنویس (نه نمونهٔ ناقص). بعد از آن فقط یک توضیح کوتاه بده.
 - **مرورگر**: برای کار روی وب از ابزار browser استفاده کن (open → snapshot → click/type). قبل از اقدام‌های حساس (پرداخت، حذف، ارسال) از کاربر تأیید بگیر. برای جست‌وجوی ساده web_search و web_fetch سریع‌ترند.
 - **کد و Git**: برای محاسبه، پردازش داده و تست از run_code استفاده کن. برای بررسی تغییرات مخازن Git، بازبینی کد (Code Review)، تاریخچه و ثبت کامیت از ابزارهای git_status، git_diff، git_log و git_commit استفاده کن.
@@ -90,6 +90,7 @@ export async function runTurn(p: TurnParams): Promise<{ text: string; ok: boolea
   const project = conv.projectId ? (await db.select().from(projects).where(eq(projects.id, conv.projectId)))[0] : undefined;
   const mems = settings.memoryEnabled ? await db.select().from(memories).orderBy(desc(memories.id)).limit(40) : [];
 
+  // ---- history
   const rows = await db.select().from(messages).where(eq(messages.conversationId, conversationId)).orderBy(asc(messages.createdAt));
   const recent = rows.filter((r) => r.status !== "running").slice(-40);
   const history: ChatMsg[] = [];
@@ -101,6 +102,7 @@ export async function runTurn(p: TurnParams): Promise<{ text: string; ok: boolea
     }
   });
 
+  // ---- user message
   const attachNote = (p.attachments || []).map((a) => `[پیوست: ${a.name} ← ${a.path}]`).join("\n");
   const userText = [p.text, attachNote].filter(Boolean).join("\n\n");
   const userParts: Part[] = [{ type: "text", text: p.text }];
@@ -125,6 +127,7 @@ export async function runTurn(p: TurnParams): Promise<{ text: string; ok: boolea
   const [asstRow] = await db.insert(messages).values({ conversationId, role: "assistant", parts: [], llm: [], status: "running" }).returning();
   p.emit({ type: "meta", conversationId, userMessageId: userRow.id, assistantMessageId: asstRow.id });
 
+  // ---- persistence helpers
   let parts: Part[] = [];
   const newLlm: ChatMsg[] = [];
   let lastFlush = 0;
@@ -213,13 +216,16 @@ export async function runTurn(p: TurnParams): Promise<{ text: string; ok: boolea
     }
   }
 
+  // make sure every tool call has a response
   const answered = new Set(newLlm.filter((m) => m.role === "tool").map((m) => m.tool_call_id));
   for (const m of [...newLlm]) {
     for (const tc of m.tool_calls || []) if (!answered.has(tc.id)) newLlm.push({ role: "tool", tool_call_id: tc.id, content: "لغو شد." });
   }
+  // mark unfinished tool parts
   parts = parts.map((pt) => (pt.type === "tool" && (pt.status === "running" || pt.status === "awaiting") ? { ...pt, status: "error" as const, result: "لغو شد" } : pt));
   await flush(true, signal.aborted ? "stopped" : ok ? "done" : "error");
 
+  // title
   try {
     if (conv.title === "گفتگوی جدید" && p.text) {
       let title = p.text.replace(/\s+/g, " ").slice(0, 48);
