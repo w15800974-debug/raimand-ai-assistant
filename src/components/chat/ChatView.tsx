@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, FileUp, MessageCircle, Paperclip, Send, Square, X } from "lucide-react";
+import { Bot, Download, FileUp, MessageCircle, Mic, MicOff, Paperclip, Send, Square, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { applyEvent, type AgentEvent, type Part } from "@/lib/events";
@@ -10,14 +10,15 @@ import { MessageView, type ChatMessage } from "./MessageView";
 type ProviderLite = { id: number; name: string; model: string; models: string[]; active: boolean };
 type ProjectLite = { id: number; name: string };
 type Attach = { path: string; name: string; mime: string };
+type PromptItem = { id: string; slash: string; title: string; category: string; content: string };
 
 const SUGGESTIONS = [
   { icon: "📊", title: "ساخت ارائه", text: "یک ارائهٔ حرفه‌ای ۸ اسلایدی دربارهٔ هوش مصنوعی در آموزش بساز و به صورت فایل PPTX ذخیره کن." },
+  { icon: "📗", title: "اکسل فرمول‌دار", text: "یک فایل اکسل (.xlsx) برای مدیریت بودجهٔ ماهانه همراه با فرمول جمع و میانگین بساز." },
+  { icon: "🌿", title: "بازبینی کد Git", text: "تغییرات اخیر مخزن Git را بررسی کن و گزارش بازبینی کد همراه با پیام کامیت پیشنهاد بده." },
   { icon: "✨", title: "داشبورد تعاملی", text: "یک داشبورد تعاملی برای مدیریت هزینه‌های ماهانه با نمودار و فرم افزودن هزینه بساز." },
   { icon: "📝", title: "آزمون PDF", text: "یک آزمون ۱۰ سؤالی چهارگزینه‌ای دربارهٔ تاریخ ایران بساز و به صورت PDF با پاسخنامه خروجی بده." },
-  { icon: "🧭", title: "کار با مرورگر", text: "در مرورگر برو و آخرین اخبار فناوری را از چند سایت جمع‌آوری کن و گزارش خلاصه بنویس." },
-  { icon: "🗂️", title: "مرتب‌سازی فایل‌ها", text: "پوشهٔ کاری را بررسی کن و ساختار فایل‌ها را گزارش بده، سپس پیشنهاد مرتب‌سازی بده." },
-  { icon: "⏰", title: "وظیفهٔ زمان‌بندی‌شده", text: "هر روز ساعت ۹ صبح یک خلاصه از اخبار هوش مصنوعی برایم تهیه کن و در یک فایل ذخیره کند." },
+  { icon: "🎨", title: "تولید تصویر", text: "یک تصویر مدرن و مینیمال برای کاور ارائهٔ هوش مصنوعی بساز و در پوشهٔ images ذخیره کن." },
 ];
 
 export function ChatView({ conversationId: initialId }: { conversationId?: string }) {
@@ -29,6 +30,7 @@ export function ChatView({ conversationId: initialId }: { conversationId?: strin
   const [running, setRunning] = useState(false);
   const [providers, setProviders] = useState<ProviderLite[]>([]);
   const [projects, setProjects] = useState<ProjectLite[]>([]);
+  const [prompts, setPrompts] = useState<PromptItem[]>([]);
   const [providerId, setProviderId] = useState<number | null>(null);
   const [model, setModel] = useState("");
   const [projectId, setProjectId] = useState<number | null>(null);
@@ -36,11 +38,16 @@ export function ChatView({ conversationId: initialId }: { conversationId?: strin
   const [attachments, setAttachments] = useState<Attach[]>([]);
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(!!initialId);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const fileInput = useRef<HTMLInputElement>(null);
   const runningRef = useRef(false);
   const convRef = useRef<string | undefined>(initialId);
+  const streamingRef = useRef(false);
+  const mediaRecRef = useRef<MediaRecorder | null>(null);
+  const speechRecRef = useRef<any>(null);
 
   const refreshSidebar = () => window.dispatchEvent(new Event("rm:conversations"));
 
@@ -56,9 +63,14 @@ export function ChatView({ conversationId: initialId }: { conversationId?: strin
 
   useEffect(() => {
     (async () => {
-      const [ps, pr] = await Promise.all([api<ProviderLite[]>("/api/providers"), api<ProjectLite[]>("/api/projects")]);
+      const [ps, pr, st] = await Promise.all([
+        api<ProviderLite[]>("/api/providers"),
+        api<ProjectLite[]>("/api/projects"),
+        api<{ promptTemplates?: PromptItem[] }>("/api/settings").catch(() => ({ promptTemplates: [] })),
+      ]);
       setProviders(ps);
       setProjects(pr);
+      setPrompts(Array.isArray(st.promptTemplates) ? st.promptTemplates : []);
       const active = ps.find((p) => p.active) ?? ps[0];
       if (initialId) {
         const r = await loadConversation(initialId);
@@ -110,8 +122,6 @@ export function ChatView({ conversationId: initialId }: { conversationId?: strin
     }, 1500);
     return () => clearInterval(t);
   }, [running, convId]);
-
-  const streamingRef = useRef(false);
 
   useEffect(() => {
     if (stick.current && scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight;
@@ -204,6 +214,39 @@ export function ChatView({ conversationId: initialId }: { conversationId?: strin
     [input, attachments, mode, providerId, model, projectId, initialId],
   );
 
+  const editUserMessage = useCallback(
+    async (messageId: string, newText: string) => {
+      if (!convRef.current || runningRef.current) return;
+      await api(`/api/conversations/${convRef.current}/truncate`, { method: "POST", json: { fromMessageId: messageId } });
+      const idx = messages.findIndex((m) => m.id === messageId);
+      if (idx >= 0) setMessages(messages.slice(0, idx));
+      void send(newText);
+    },
+    [messages, send],
+  );
+
+  const regenerateAssistant = useCallback(
+    async (assistantId: string) => {
+      if (!convRef.current || runningRef.current) return;
+      const idx = messages.findIndex((m) => m.id === assistantId);
+      if (idx <= 0) return;
+      let userIdx = idx - 1;
+      while (userIdx >= 0 && messages[userIdx].role !== "user") userIdx--;
+      if (userIdx < 0) return;
+      const userMsg = messages[userIdx];
+      const userText = userMsg.parts
+        .filter((p): p is Extract<Part, { type: "text" }> => p.type === "text")
+        .map((p) => p.text)
+        .join("\n")
+        .trim();
+      if (!userText) return;
+      await api(`/api/conversations/${convRef.current}/truncate`, { method: "POST", json: { fromMessageId: userMsg.id } });
+      setMessages(messages.slice(0, userIdx));
+      void send(userText);
+    },
+    [messages, send],
+  );
+
   const stop = async () => {
     if (convRef.current) await api("/api/chat/stop", { method: "POST", json: { conversationId: convRef.current } });
   };
@@ -222,14 +265,126 @@ export function ChatView({ conversationId: initialId }: { conversationId?: strin
     }
   };
 
+  const toggleVoice = async () => {
+    if (recording) {
+      speechRecRef.current?.stop?.();
+      speechRecRef.current = null;
+      if (mediaRecRef.current && mediaRecRef.current.state !== "inactive") {
+        mediaRecRef.current.stop();
+      }
+      setRecording(false);
+      return;
+    }
+
+    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRec) {
+      const rec = new SpeechRec();
+      rec.lang = document.documentElement.lang === "en" ? "en-US" : "fa-IR";
+      rec.interimResults = false;
+      rec.maxAlternatives = 1;
+      rec.onresult = (e: any) => {
+        const transcript = e.results?.[0]?.[0]?.transcript || "";
+        if (transcript) setInput((prev) => (prev ? `${prev} ${transcript}` : transcript));
+      };
+      rec.onend = () => setRecording(false);
+      rec.onerror = () => setRecording(false);
+      speechRecRef.current = rec;
+      setRecording(true);
+      rec.start();
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const chunks: BlobPart[] = [];
+      const mr = new MediaRecorder(stream);
+      mr.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+      mr.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(chunks, { type: "audio/webm" });
+        setTranscribing(true);
+        try {
+          const fd = new FormData();
+          fd.append("file", blob, "voice.webm");
+          const r = await fetch("/api/audio/transcribe", { method: "POST", body: fd }).then((x) => x.json());
+          if (r.text) setInput((prev) => (prev ? `${prev} ${r.text}` : r.text));
+        } finally {
+          setTranscribing(false);
+        }
+      };
+      mediaRecRef.current = mr;
+      setRecording(true);
+      mr.start();
+    } catch {
+      alert("دسترسی به میکروفون امکان‌پذیر نشد.");
+    }
+  };
+
+  const exportConversation = (format: "md" | "html") => {
+    if (!messages.length) return;
+    const safeTitle = (title || "raimand-chat").replace(/[\\/:*?"<>|]/g, "-");
+    const mdBody = messages
+      .map((m) => {
+        const who = m.role === "user" ? "## کاربر" : "## رایمند";
+        const body = m.parts
+          .filter((p): p is Extract<Part, { type: "text" }> => p.type === "text")
+          .map((p) => p.text)
+          .join("\n\n");
+        return `${who}\n\n${body}`;
+      })
+      .join("\n\n---\n\n");
+
+    if (format === "md") {
+      const blob = new Blob([`# ${title || "گفتگوی رایمند"}\n\n${mdBody}`], { type: "text/markdown;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${safeTitle}.md`;
+      a.click();
+    } else {
+      const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br/>");
+      const htmlItems = messages
+        .map((m) => {
+          const text = m.parts
+            .filter((p): p is Extract<Part, { type: "text" }> => p.type === "text")
+            .map((p) => p.text)
+            .join("\n\n");
+          return `<div class="msg ${m.role}"><div class="role">${m.role === "user" ? "کاربر" : "رایمند"}</div><div class="body">${esc(text)}</div></div>`;
+        })
+        .join("");
+      const html = `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>${esc(title || "گفتگوی رایمند")}</title><style>body{font-family:Tahoma,sans-serif;max-width:820px;margin:32px auto;padding:0 20px;line-height:1.9;color:#111827}h1{color:#4f46e5}.msg{margin:16px 0;padding:14px 18px;border-radius:14px;border:1px solid #e5e7eb}.msg.user{background:#eef2ff}.role{font-weight:bold;font-size:12px;color:#6b7280;margin-bottom:6px}</style></head><body><h1>${esc(title || "گفتگوی رایمند")}</h1>${htmlItems}</body></html>`;
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${safeTitle}.html`;
+      a.click();
+    }
+  };
+
+  const slashQuery = input.startsWith("/") && !input.includes(" ") && !input.includes("\n") ? input.slice(1).toLowerCase() : null;
+  const slashMatches = slashQuery !== null
+    ? prompts.filter((p) => p.slash.toLowerCase().includes(slashQuery) || p.title.toLowerCase().includes(slashQuery)).slice(0, 6)
+    : [];
+
   const curProvider = providers.find((p) => p.id === providerId);
   const noProvider = providers.length === 0;
 
   return (
     <div className="h-full flex flex-col" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files.length) void upload(e.dataTransfer.files); }}>
       <header className="shrink-0 px-5 py-3 border-b border-line bg-panel/70 backdrop-blur flex flex-wrap items-center gap-3">
-        <div className="font-bold truncate max-w-[40%]">{title || "گفتگوی جدید"}</div>
+        <div className="font-bold truncate max-w-[35%]">{title || "گفتگوی جدید"}</div>
         <div className="flex-1" />
+        {messages.length > 0 && (
+          <div className="flex items-center gap-1">
+            <button onClick={() => exportConversation("md")} className={btnCls("ghost", "sm")} title="دانلود Markdown">
+              <Download size={13} /> MD
+            </button>
+            <button onClick={() => exportConversation("html")} className={btnCls("ghost", "sm")} title="دانلود HTML / چاپ PDF">
+              <Download size={13} /> HTML
+            </button>
+          </div>
+        )}
         <div className="flex rounded-xl bg-panel2 p-1 text-sm">
           {([
             ["chat", "چت", MessageCircle],
@@ -280,7 +435,7 @@ export function ChatView({ conversationId: initialId }: { conversationId?: strin
             <div className="pt-8 pb-4 text-center fade-in">
               <div className="mx-auto size-20 rounded-3xl bg-brand-gradient grid place-items-center text-white text-4xl shadow-xl shadow-brand/30 mb-5">✦</div>
               <h1 className="text-3xl font-extrabold gradient-text mb-2">سلام! من رایمند هستم</h1>
-              <p className="text-muted mb-8">دستیار هوش مصنوعی همه‌کاره‌تان: فکر می‌کنم، برنامه می‌ریزم، فایل واقعی می‌سازم و مرورگر را کنترل می‌کنم.</p>
+              <p className="text-muted mb-8">دستیار هوش مصنوعی همه‌کاره‌تان: چت، عامل هوشمند، اکسل، PDF، بازبینی کد Git، تولید تصویر و ورودی صوتی.</p>
               {noProvider && (
                 <div className="mb-8 mx-auto max-w-lg rounded-2xl border border-warn/40 bg-warn/10 p-4 text-sm">
                   هنوز هیچ ارائه‌دهندهٔ هوش مصنوعی تنظیم نشده است. <a href="/settings" className="underline font-bold text-brand">از تنظیمات یک API Key اضافه کنید</a>.
@@ -288,7 +443,7 @@ export function ChatView({ conversationId: initialId }: { conversationId?: strin
               )}
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 text-start">
                 {SUGGESTIONS.map((s) => (
-                  <button key={s.title} onClick={() => { setInput(s.text); if (s.title.includes("مرورگر") || s.title.includes("زمان") || s.title.includes("مرتب")) setMode("agent"); }} className="rounded-2xl border border-line bg-panel p-4 hover:border-brand hover:shadow-lg hover:shadow-brand/10 transition text-start">
+                  <button key={s.title} onClick={() => { setInput(s.text); if (s.title.includes("Git") || s.title.includes("اکسل")) setMode("agent"); }} className="rounded-2xl border border-line bg-panel p-4 hover:border-brand hover:shadow-lg hover:shadow-brand/10 transition text-start">
                     <div className="text-2xl mb-2">{s.icon}</div>
                     <div className="font-bold text-sm mb-1">{s.title}</div>
                     <div className="text-xs text-muted leading-6 line-clamp-2">{s.text}</div>
@@ -298,13 +453,39 @@ export function ChatView({ conversationId: initialId }: { conversationId?: strin
             </div>
           )}
           {messages.map((m, i) => (
-            <MessageView key={m.id} m={m} streaming={running && i === messages.length - 1 && m.role === "assistant"} onSend={(t) => void send(t)} />
+            <MessageView
+              key={m.id}
+              m={m}
+              streaming={running && i === messages.length - 1 && m.role === "assistant"}
+              onSend={(t) => void send(t)}
+              onEditUserMessage={editUserMessage}
+              onRegenerateAssistant={regenerateAssistant}
+            />
           ))}
         </div>
       </div>
 
       <div className="shrink-0 px-4 pb-4 pt-2">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-4xl mx-auto relative">
+          {slashMatches.length > 0 && (
+            <div className="absolute bottom-full mb-2 inset-x-0 rounded-2xl border border-line bg-panel shadow-xl p-1.5 z-20 max-h-64 overflow-y-auto">
+              <div className="px-3 py-1 text-[11px] text-muted font-semibold">پرامپت‌های آماده (برای انتخاب کلیک کنید)</div>
+              {slashMatches.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => setInput(p.content)}
+                  className="w-full flex items-center justify-between gap-3 px-3 py-2 rounded-xl hover:bg-brand/10 text-start transition"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold truncate">{p.title}</div>
+                    <div className="text-[11px] text-muted truncate">{p.content}</div>
+                  </div>
+                  <code dir="ltr" className="text-xs px-2 py-0.5 rounded bg-panel2 text-brand shrink-0">/{p.slash}</code>
+                </button>
+              ))}
+            </div>
+          )}
+
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-2">
               {attachments.map((a, i) => (
@@ -323,12 +504,17 @@ export function ChatView({ conversationId: initialId }: { conversationId?: strin
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  if (slashMatches.length > 0) {
+                    e.preventDefault();
+                    setInput(slashMatches[0].content);
+                    return;
+                  }
                   e.preventDefault();
                   void send();
                 }
               }}
               rows={Math.min(8, Math.max(2, input.split("\n").length))}
-              placeholder={mode === "agent" ? "کار پیچیده‌ای را شرح دهید؛ رایمند برنامه‌ریزی و تا نتیجه اجرا می‌کند..." : "پیام خود را بنویسید... (Shift+Enter برای خط جدید)"}
+              placeholder={mode === "agent" ? "کار پیچیده‌ای را شرح دهید یا «/» بزنید..." : "پیام خود را بنویسید یا «/» برای پرامپت‌های آماده بزنید... (Shift+Enter خط جدید)"}
               className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 outline-none text-[15px] leading-7"
             />
             <div className="flex items-center justify-between px-3 pb-2.5">
@@ -337,8 +523,16 @@ export function ChatView({ conversationId: initialId }: { conversationId?: strin
                 <button onClick={() => fileInput.current?.click()} className="p-2 rounded-xl hover:bg-panel2 text-muted" title="پیوست فایل">
                   <Paperclip size={18} />
                 </button>
+                <button
+                  onClick={() => void toggleVoice()}
+                  className={cx("p-2 rounded-xl transition", recording ? "bg-bad/15 text-bad animate-pulse" : "hover:bg-panel2 text-muted")}
+                  title={recording ? "توقف ضبط صدا" : "ورودی صوتی"}
+                >
+                  {recording ? <MicOff size={18} /> : <Mic size={18} />}
+                </button>
+                {transcribing && <span className="text-xs text-brand">در حال تبدیل صدا به متن...</span>}
                 {uploading && <span className="text-xs text-muted">در حال آپلود...</span>}
-                <span className="text-xs text-muted ms-1">{mode === "agent" ? "🤖 حالت عامل: برنامه‌ریزی و اجرای خودکار" : "💬 حالت چت"}</span>
+                <span className="text-xs text-muted ms-1 hidden sm:inline">{mode === "agent" ? "🤖 حالت عامل" : "💬 حالت چت"}</span>
               </div>
               {running ? (
                 <button onClick={stop} className={btnCls("danger")}>

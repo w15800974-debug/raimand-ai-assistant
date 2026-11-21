@@ -9,9 +9,13 @@ import {
   Download,
   FileText,
   Loader2,
+  Pencil,
   Play,
+  RefreshCw,
   ShieldAlert,
   ShieldCheck,
+  Volume2,
+  VolumeX,
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
@@ -37,6 +41,8 @@ const LABELS: Record<string, [string, string]> = {
   pptx_create: ["ساخت پاورپوینت", "📊"],
   docx_create: ["ساخت سند Word", "📝"],
   pdf_create: ["ساخت PDF", "📕"],
+  xlsx_create: ["ساخت فایل اکسل", "📗"],
+  xlsx_read: ["خواندن فایل اکسل", "📗"],
   doc_read: ["خواندن سند", "📖"],
   pptx_edit: ["ویرایش پاورپوینت", "🎨"],
   docx_edit: ["ویرایش سند Word", "🖋️"],
@@ -56,6 +62,8 @@ const LABELS: Record<string, [string, string]> = {
   git_diff: ["تغییرات کد (Diff)", "🔍"],
   git_log: ["تاریخچه کامیت‌ها", "📜"],
   git_commit: ["ثبت کامیت گیت", "✅"],
+  generate_image: ["تولید تصویر", "🎨"],
+  ocr_image: ["استخراج متن تصویر (OCR)", "🔎"],
 };
 
 function toolLabel(name: string): [string, string] {
@@ -256,12 +264,50 @@ function FileChip({ p }: { p: Extract<Part, { type: "file" }> }) {
   );
 }
 
-export function MessageView({ m, streaming, onSend }: { m: ChatMessage; streaming?: boolean; onSend: (t: string) => void }) {
+export function MessageView({
+  m,
+  streaming,
+  onSend,
+  onEditUserMessage,
+  onRegenerateAssistant,
+}: {
+  m: ChatMessage;
+  streaming?: boolean;
+  onSend: (t: string) => void;
+  onEditUserMessage?: (messageId: string, newText: string) => void;
+  onRegenerateAssistant?: (messageId: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+
+  const plainText = m.parts
+    .filter((p): p is Extract<Part, { type: "text" }> => p.type === "text")
+    .map((p) => p.text)
+    .join("\n")
+    .trim();
+
+  const toggleSpeak = () => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    if (speaking) {
+      window.speechSynthesis.cancel();
+      setSpeaking(false);
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance(plainText.replace(/[#*`_~]/g, ""));
+    utt.lang = /[\u0600-\u06FF]/.test(plainText) ? "fa-IR" : "en-US";
+    utt.onend = () => setSpeaking(false);
+    utt.onerror = () => setSpeaking(false);
+    setSpeaking(true);
+    window.speechSynthesis.speak(utt);
+  };
+
   if (m.role === "user") {
-    const texts = m.parts.filter((p) => p.type === "text") as Extract<Part, { type: "text" }>[];
     const files = m.parts.filter((p) => p.type === "file") as Extract<Part, { type: "file" }>[];
     return (
-      <div className="flex justify-start fade-in">
+      <div className="group flex justify-start fade-in">
         <div className="max-w-[85%] space-y-2">
           {files.length > 0 && (
             <div className="flex flex-wrap gap-2">
@@ -270,16 +316,60 @@ export function MessageView({ m, streaming, onSend }: { m: ChatMessage; streamin
               ))}
             </div>
           )}
-          {texts.some((t) => t.text) && (
-            <div className="rounded-2xl rounded-ss-md bg-brand text-white px-4 py-3 whitespace-pre-wrap leading-8 text-[15px]">{texts.map((t) => t.text).join("\n")}</div>
+          {editing ? (
+            <div className="rounded-2xl border border-brand bg-panel p-3 space-y-2 min-w-[280px]">
+              <textarea
+                rows={3}
+                value={editDraft}
+                onChange={(e) => setEditDraft(e.target.value)}
+                className="w-full bg-panel2/60 rounded-xl p-2.5 text-sm outline-none border border-line focus:border-brand"
+              />
+              <div className="flex justify-end gap-2">
+                <button className={btnCls("ghost", "sm")} onClick={() => setEditing(false)}>
+                  انصراف
+                </button>
+                <button
+                  className={btnCls("primary", "sm")}
+                  disabled={!editDraft.trim()}
+                  onClick={() => {
+                    setEditing(false);
+                    onEditUserMessage?.(m.id, editDraft.trim());
+                  }}
+                >
+                  ذخیره و ارسال مجدد
+                </button>
+              </div>
+            </div>
+          ) : (
+            plainText && (
+              <div>
+                <div className="rounded-2xl rounded-ss-md bg-brand text-white px-4 py-3 whitespace-pre-wrap leading-8 text-[15px]">
+                  {plainText}
+                </div>
+                {!streaming && onEditUserMessage && !m.id.startsWith("u-") && (
+                  <div className="flex gap-1 mt-1 opacity-0 group-hover:opacity-100 transition">
+                    <button
+                      onClick={() => {
+                        setEditDraft(plainText);
+                        setEditing(true);
+                      }}
+                      className="inline-flex items-center gap-1 text-[11px] text-muted hover:text-brand px-2 py-0.5 rounded-lg hover:bg-panel2"
+                    >
+                      <Pencil size={12} /> ویرایش و ارسال مجدد
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
           )}
         </div>
       </div>
     );
   }
+
   const empty = m.parts.length === 0;
   return (
-    <div className="flex gap-3 fade-in">
+    <div className="group flex gap-3 fade-in">
       <div className="size-8 rounded-xl bg-brand-gradient text-white grid place-items-center shrink-0 text-sm font-bold mt-1">ر</div>
       <div className="flex-1 min-w-0 space-y-3">
         {empty && streaming && (
@@ -318,6 +408,39 @@ export function MessageView({ m, streaming, onSend }: { m: ChatMessage; streamin
             <span />
             <span />
             <span />
+          </div>
+        )}
+        {!streaming && plainText && (
+          <div className="flex flex-wrap items-center gap-1 pt-1 opacity-0 group-hover:opacity-100 transition">
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(plainText);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              }}
+              className="inline-flex items-center gap-1 text-[11px] text-muted hover:text-fg px-2 py-1 rounded-lg hover:bg-panel2"
+            >
+              {copied ? <Check size={13} className="text-good" /> : <Copy size={13} />}
+              {copied ? "کپی شد" : "کپی"}
+            </button>
+            <button
+              onClick={toggleSpeak}
+              className={cx(
+                "inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg hover:bg-panel2",
+                speaking ? "text-brand font-semibold" : "text-muted hover:text-fg",
+              )}
+            >
+              {speaking ? <VolumeX size={13} /> : <Volume2 size={13} />}
+              {speaking ? "توقف پخش" : "پخش صوتی"}
+            </button>
+            {onRegenerateAssistant && !m.id.startsWith("tmp-") && (
+              <button
+                onClick={() => onRegenerateAssistant(m.id)}
+                className="inline-flex items-center gap-1 text-[11px] text-muted hover:text-brand px-2 py-1 rounded-lg hover:bg-panel2"
+              >
+                <RefreshCw size={13} /> تولید مجدد
+              </button>
+            )}
           </div>
         )}
       </div>
